@@ -72,14 +72,18 @@ class Program
 
         double[] voice = ReadAudio("voice.raw");
         double[] voiceDistort = new double[voice.Length];
+        double[] voiceUndistort = new double[voice.Length];
         for (int i = 0; i < voice.Length; i++)
         {
             voiceDistort[i] = OverdrivenAmplifier(voice[i]);
+            voiceUndistort[i] = voice[i];
         }
         SaveAudio(voiceDistort, "voicedistort.raw");
         ModulateDSB384(voiceDistort, "voicedistort384.raw");
-
-        PlotFunctions();
+        ModulateDSB384(voice, "rfnodistort.raw");
+        ModulateDSB384Distort(voice, "rfdistort.raw");
+        ModulateDSB384Distort(voiceUndistort, "rfundistort.raw");
+        ModulateDSB384Undistort(voice, "rfstageundistort.raw");
     }
 
     //We need the inverse of the transfer function.
@@ -219,6 +223,60 @@ class Program
         SaveAudio(dsb, outFile);
     }
 
+    static void ModulateDSB384Distort(double[] input, string outFile)
+    {
+        //Generate "RF" audio, 384000kps sample rate, 100khz carrier.
+        //Simple DSB modulation.
+
+        double[] dsb = new double[input.Length * 8];
+
+        double carrierPhase = 0;
+        for (int i = 0; i < input.Length - 1; i++)
+        {
+            //Linear resampling of input.
+            for (int j = 0; j < 8; j++)
+            {
+                double percentage = j / 8.0;
+                double inputSample = input[i] * (1.0 - percentage) + input[i + 1] * percentage;
+                double carrier = Math.Sin(carrierPhase);
+                carrierPhase += 50000 * 2.0 * Math.PI / 384000;
+                //This helps very small errors with double precision - ignore.
+                carrierPhase %= 2.0 * Math.PI;
+                //Actual DSB modulation, "double balanced mixer".
+                dsb[i * 8 + j] = OverdrivenAmplifier(carrier * inputSample);
+            }
+
+        }
+        SaveAudio(dsb, outFile);
+    }
+
+    static void ModulateDSB384Undistort(double[] input, string outFile)
+    {
+        //Generate "RF" audio, 384000kps sample rate, 100khz carrier.
+        //Simple DSB modulation.
+
+        double[] dsb = new double[input.Length * 8];
+
+        double carrierPhase = 0;
+        for (int i = 0; i < input.Length - 1; i++)
+        {
+            //Linear resampling of input.
+            for (int j = 0; j < 8; j++)
+            {
+                double percentage = j / 8.0;
+                double inputSample = input[i] * (1.0 - percentage) + input[i + 1] * percentage;
+                double carrier = Math.Sin(carrierPhase);
+                carrierPhase += 50000 * 2.0 * Math.PI / 384000;
+                //This helps very small errors with double precision - ignore.
+                carrierPhase %= 2.0 * Math.PI;
+                //Actual DSB modulation, "double balanced mixer".
+                dsb[i * 8 + j] = OverdrivenAmplifier(Predistort(carrier * inputSample));
+            }
+
+        }
+        SaveAudio(dsb, outFile);
+    }
+
 
     static void ModulateDSB(double[] input, string outFile)
     {
@@ -236,7 +294,7 @@ class Program
                 double percentage = j / 100.0;
                 double inputSample = input[i] * (1.0 - percentage) + input[i + 1] * percentage;
                 double carrier = Math.Sin(carrierPhase);
-                carrierPhase += 100000 * 2.0 * Math.PI / 4800000;
+                carrierPhase += 50000 * 2.0 * Math.PI / 4800000;
                 //This helps very small errors with double precision - ignore.
                 carrierPhase %= 2.0 * Math.PI;
                 //Actual DSB modulation, "double balanced mixer".
